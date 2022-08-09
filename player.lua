@@ -1,11 +1,12 @@
 require("entity")
+require("component")
 
 Player = Entity:new()
 
 function Player:onCreate(entityId)
 	self.entityId = entityId
-	self.tagComponent = self:getComponent("TagComponent")
-	self.transformComponent = self:getComponent("TransformComponent")
+	self.tagComponent = self:getComponent(ComponentType.TagComponent)
+	self.transformComponent = self:getComponent(ComponentType.TransformComponent)
 end
 
 function Player:onUpdate()

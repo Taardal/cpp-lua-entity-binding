@@ -1,5 +1,16 @@
 require("engine")
 
+--
+-- COMPONENT TYPE
+--
+ComponentType = {
+	TagComponent = "TagComponent",
+	TransformComponent = "TransformComponent",
+}
+
+--
+-- COMPONENT
+--
 Component = {}
 
 function Component:new(component)
@@ -11,7 +22,7 @@ function Component:new(component)
 end
 
 --
--- TagComponent
+-- TAG COMPONENT
 --
 
 TagComponent = Component:new()
@@ -22,7 +33,7 @@ function TagComponent:getTag()
 end
 
 --
--- TransformComponent
+-- TRANSFORM COMPONENT
 --
 
 TransformComponent = Component:new()

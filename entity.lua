@@ -1,4 +1,4 @@
-require("components")
+require("component")
 
 Entity = {}
 
@@ -15,10 +15,10 @@ function Entity:getComponent(componentType, entityId)
 	local component = { 
 		entityId = entityId or self.entityId 
 	}
-	if componentType == "TagComponent" then
+	if componentType == ComponentType.TagComponent then
 		return TagComponent:new(component)
 	end
-	if componentType == "TransformComponent" then
+	if componentType == ComponentType.TransformComponent then
 		return TransformComponent:new(component)
 	end
 	--print("Unknown component")
