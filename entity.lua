@@ -3,17 +3,17 @@ require("components")
 Entity = {}
 
 function Entity:new(entity)
-	print("Entity:new")
+	--print("Entity:new")
 	entity = entity or {}
 	setmetatable(entity, self)
 	self.__index = self
 	return entity
 end
 
-function Entity:getComponent(componentType)
-	print("Entity:getComponent [" .. componentType .. "]")
+function Entity:getComponent(componentType, entityId)
+	--print("Entity:getComponent [" .. componentType .. "]")
 	local component = { 
-		entityId = self.entityId 
+		entityId = entityId or self.entityId 
 	}
 	if componentType == "TagComponent" then
 		return TagComponent:new(component)
@@ -21,6 +21,6 @@ function Entity:getComponent(componentType)
 	if componentType == "TransformComponent" then
 		return TransformComponent:new(component)
 	end
-	print("Unknown component")
+	--print("Unknown component")
 	return nil
 end

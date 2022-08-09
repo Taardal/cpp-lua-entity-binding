@@ -14,12 +14,12 @@ local components = {
 	},
 }
 
-function Engine:TagComponent_getTag(entityId)
-	print("Engine:TagComponent_getTag [" .. entityId .. "]")
+function Engine.TagComponent_getTag(entityId)
+	--print("Engine.TagComponent_getTag [" .. entityId .. "]")
 	return components[entityId].TagComponent.tag	
 end
 
-function Engine:TransformComponent_getTransform(entityId)
-	print("Engine:TransformComponent_getTransform [" .. entityId .. "]")
+function Engine.TransformComponent_getTransform(entityId)
+	--print("Engine.TransformComponent_getTransform [" .. entityId .. "]")
 	return components[entityId].TransformComponent.transform	
 end

@@ -1,11 +1,9 @@
 require("engine")
 
-Component = {
-	engine = Engine
-}
+Component = {}
 
 function Component:new(component)
-	print("Component:new")
+	--print("Component:new")
 	local component = component or {}
 	setmetatable(component, self)
 	self.__index = self
@@ -19,8 +17,8 @@ end
 TagComponent = Component:new()
 
 function TagComponent:getTag()
-	print("TagComponent:getTag")
-	return self.engine:TagComponent_getTag(self.entityId)
+	--print("TagComponent:getTag")
+	return Engine.TagComponent_getTag(self.entityId)
 end
 
 --
@@ -30,7 +28,7 @@ end
 TransformComponent = Component:new()
 
 function TransformComponent:getTransform()
-	print("TransformComponent:getTransform")
-	return self.engine:TransformComponent_getTransform(self.entityId)
+	--print("TransformComponent:getTransform")
+	return Engine.TransformComponent_getTransform(self.entityId)
 end
 
