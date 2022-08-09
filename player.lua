@@ -1,23 +1,17 @@
+require("entity")
+
 Player = Entity:new()
 
 function Player:onCreate(entityId)
 	self.entityId = entityId
+	self.tagComponent = self:getComponent("TagComponent")
+	self.transformComponent = self:getComponent("TransformComponent")
 end
 
 function Player:onUpdate()
-	print("player.onUpdate")
-
-	local transformComponent = self:getComponent("TransformComponent")
-	print(transformComponent.transform.x)
-	print(transformComponent.transform.y)
-
-	self:updateComponent("TransformComponent", function(component)
-		component.transform.x = 12313
-		component.transform.y = 99999
-	end)
-
-	local transformComponent = self:getComponent("TransformComponent")
-	print(transformComponent.transform.x)
-	print(transformComponent.transform.y)
+	print("Player:onUpdate")
+	print("-- ID [" .. self.entityId .. "]")
+	print("-- Tag [" .. self.tagComponent:getTag() .. "]")
+	print("-- Transform [" .. self.transformComponent:getTransform().x .. ", " .. self.transformComponent:getTransform().y .. "]")
 end
 

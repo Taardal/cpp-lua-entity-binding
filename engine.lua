@@ -14,17 +14,12 @@ local components = {
 	},
 }
 
-function Engine.getComponent(entityId, componentType)
-	local entityComponents = components[entityId]
-	if entityComponents == nil then
-		print("No components for entity [" .. entityId .. "]")
-		return nil
-	end
-	local component = entityComponents[componentType]
-	if component == nil then
-		print("No component for type [" .. componentType .. "]")
-		return nil
-	end
-	return component
+function Engine:TagComponent_getTag(entityId)
+	print("Engine:TagComponent_getTag [" .. entityId .. "]")
+	return components[entityId].TagComponent.tag	
 end
 
+function Engine:TransformComponent_getTransform(entityId)
+	print("Engine:TransformComponent_getTransform [" .. entityId .. "]")
+	return components[entityId].TransformComponent.transform	
+end

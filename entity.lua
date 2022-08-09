@@ -1,3 +1,5 @@
+require("components")
+
 Entity = {}
 
 function Entity:new(entity)
@@ -8,19 +10,17 @@ function Entity:new(entity)
 	return entity
 end
 
-function Entity:onCreate(entityId)
-	print("Entity:onCreate")
-	self.entityId = entityId
-end
-
 function Entity:getComponent(componentType)
-	print("Entity:getComponent")
-	print(componentType)
-	return Engine.getComponent(self.entityId, componentType)
-end
-
-function Entity:updateComponent(componentType, onUpdateComponent)
-	print("Entity:updateComponent")
-	local component = self:getComponent(componentType)
-	onUpdateComponent(component)
+	print("Entity:getComponent [" .. componentType .. "]")
+	local component = { 
+		entityId = self.entityId 
+	}
+	if componentType == "TagComponent" then
+		return TagComponent:new(component)
+	end
+	if componentType == "TransformComponent" then
+		return TransformComponent:new(component)
+	end
+	print("Unknown component")
+	return nil
 end
