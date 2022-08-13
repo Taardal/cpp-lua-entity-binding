@@ -1,0 +1,3 @@
+/Users/taardal/dev/taardal/luapoc/build/CMakeFiles/luapoc.dir
+/Users/taardal/dev/taardal/luapoc/build/CMakeFiles/edit_cache.dir
+/Users/taardal/dev/taardal/luapoc/build/CMakeFiles/rebuild_cache.dir

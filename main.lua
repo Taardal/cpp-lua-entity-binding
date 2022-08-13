@@ -1,6 +1,13 @@
-require("engine")
-require("entity")
-require("player")
+local entities = {}
 
-Player:onCreate("player")
-Player:onUpdate()
+function createEntity(entity)
+	log("Creating entity [" .. entity.entityId .. "]")
+	entities[entity.entityId] = entity
+end
+
+function printEntities()
+	log("Printing entities")
+	for entityId, entity in pairs(entities) do
+		log("   " .. entityId)
+	end
+end
