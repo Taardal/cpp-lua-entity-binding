@@ -3,139 +3,159 @@
 #include <sstream>
 #include <vector>
 
-struct LuaFunction {
-  std::string Name = "";
-  int ArgumentCount = 0;
-  int ResultsCount = 0;
-};
-
-void invokeLuaFunction(lua_State* L, const LuaFunction& luaFunction) {
-    lua_getglobal(L, luaFunction.Name.c_str());
-    constexpr int messageHandlerIndex = 0;
-    if (lua_pcall(L, luaFunction.ArgumentCount, luaFunction.ResultsCount, messageHandlerIndex) != LUA_OK) {
-        luaL_error(L, "Could not call method [%s]: %s", luaFunction.Name.c_str(), lua_tostring(L, -1));
-    }
-}
-
-static int printNative(lua_State* L) {
-  const char* message = lua_tostring(L, -1);
-  printf("[Lua] %s\n", message);
-  return 0; 
-}
+extern void printLua(lua_State* L, const std::string& tag = "NOTICE ME");
 
 struct ScriptComponent {
-  std::string Type;
+    std::string Type;
 };
 
 struct Entity {
-  std::string Id;
-  ScriptComponent ScriptComponent;
+    std::string Id;
+    ScriptComponent ScriptComponent;
 };
 
-struct ScriptInstance {
-  std::string EntityId;
-
-  void onCreate(lua_State* L) {
-    std::stringstream ss;
-    ss << "initEntity('" << EntityId << "')";
-    std::string script = ss.str();
-    luaL_dostring(L, script.c_str());
-  }
-
-  void onUpdate(lua_State* L) {
-    std::stringstream ss;
-    ss << "updateEntity('" << EntityId << "')";
-    std::string script = ss.str();
-//    luaL_dostring(L, script.c_str());
-    
-    lua_getglobal(L, "updateEntity");
-    lua_pushstring(L, EntityId.c_str());
-
-    constexpr int argumentCount = 1;
-    constexpr int resultCount = 0;
-    constexpr int messageHandlerIndex = 0;
-    if (lua_pcall(L, argumentCount, resultCount, messageHandlerIndex) != LUA_OK) {
-        luaL_error(L, "Could not update entity: %s", lua_tostring(L, -1));
-    }
-  }
-};
-
-struct ScriptClass {
-  std::string Type;
-
-  ScriptInstance instantiate(lua_State* L, const std::string& entityId) {
-    std::stringstream ss;
-    ss << "createEntity(" << Type << ":new { entityId = '" << entityId << "' })";
-    std::string script = ss.str();
-    luaL_dostring(L, script.c_str());
-    ScriptInstance instance{};
-    instance.EntityId = entityId;
-    return instance;
-  }
+struct Scene {
+    std::vector<Entity> Entities;
 };
 
 int main() {
-	printf("Hello World\n");
+    printf("Hello World\n");
+    printf("===\n");
 
-	lua_State* L = luaL_newstate();
-	printf("Created Lua state\n");
+    /*
+     * Lua init
+     */
 
-  luaL_openlibs(L);
-	printf("Opened Lua standard libraries\n");
+    lua_State* L = luaL_newstate();
+    printf("Created Lua state\n");
 
-  lua_register(L, "printNative", printNative);
-  printf("Registered native functions in Lua\n");
+    luaL_openlibs(L);
+    printf("Opened Lua standard libraries\n");
 
-  luaL_dofile(L, "scripts");
-  printf("Loaded Lua scripts\n");
+    /*
+     * Scene/Entities init
+     */
 
-  luaL_dostring(L, "log('Hello World from Lua')");
-  
-  ScriptComponent scriptComponent{};
-  scriptComponent.Type = "Player";
+    Scene scene{};
+    scene.Entities = {
+            {"player", {"Player"}},
+            {"foo",    {"Player"}},
+            {"bar",    {"Player"}}
+    };
 
-  Entity entity{};
-  entity.Id = "foobar123";
-  entity.ScriptComponent = scriptComponent;
+    /*
+     * Lua functions
+     */
 
-  ScriptClass scriptClass{};
-  scriptClass.Type = scriptComponent.Type;
+    lua_register(L, "printNative", [](lua_State* L) -> int {
+        printf("[Lua] %s\n", lua_tostring(L, -1));
+        return 0;
+    });
+    printf("Registered native functions in Lua\n");
 
-  std::vector<ScriptInstance> instances;
-  instances.push_back(scriptClass.instantiate(L, entity.Id));
-  instances.push_back(scriptClass.instantiate(L, "foo"));
-  instances.push_back(scriptClass.instantiate(L, "bar"));
-//  luaL_dostring(L, "printEntities()");
-  
-  lua_getglobal(L, "printEntities");
-  if (lua_pcall(L, 0, 0, 0) != LUA_OK) {
-    luaL_error(L, "Could not update entity: %s", lua_tostring(L, -1));
-  }
-  
+    /*
+     * Lua userdatums
+     */
 
-  for (auto& instance : instances) {
-    instance.onCreate(L);
-  }
-  for (auto& instance : instances) {
-    instance.onUpdate(L);
-  }
+    lua_newtable(L);
+    lua_pushvalue(L, -1);
+    lua_setglobal(L, "Entity");
+
+    lua_pushstring(L, "bar");
+    lua_setfield(L, -2, "foo");
+
+    lua_pushlightuserdata(L, (void*) &scene);
+    constexpr int upvalueCount = 1;
+    auto createFn = [](lua_State* L) -> int {
+
+        /*
+         * function Entity:new(entity)
+         *   entity = entity or {}
+         *   setmetatable(entity, self)
+         *   self.__index = self
+         *   return entity
+         * end
+         */
+
+        printLua(L, "createFn");
+
+        // entity = entity or {}
+        if (lua_gettop(L) > 0) {
+            lua_getfield(L, -1, "entityId");
+            printf("%s\n", lua_tostring(L, -1));
+        } else {
+            lua_newtable(L);
+        }
+
+        // setmetatable(entity, self)
+        lua_getglobal(L, "Entity");
+        lua_setmetatable(L, -2);
+
+        // self.__index = self
+        lua_getglobal(L, "Entity");
+        lua_pushvalue(L, -1);
+        lua_pushstring(L, "__index");
+        lua_settable(L, -3);
+
+        // return entity
+        return 1;
+    };
+    lua_pushcclosure(L, createFn, upvalueCount);
+    lua_setfield(L, -2, "new");
+    lua_pop(L, 1);
 
 
-  /*
-  std::vector scriptComponentTypes = {
-      "Player"
-  };
-  */
+    /*
+    luaL_newmetatable(L, "Entity");
+    lua_pushstring(L, "__index");
+    lua_pushvalue(L, -2);
+    lua_settable(L, -3);
+    */
 
-  // Parse script component types to ScriptClass 
-  //   add to map by type string (?)
-  //
-  // For each ScriptClass
-  //   ScriptInstance instance = scriptClass.instantiate() --> new lua table + call onCreate() function
-  //   add instance to map by entity id
-  //   
-  //  OnUpdate
-  //    For each ScriptInstance
-  //      instance.onUpdate()
-  //
+    printf("Registered userdatums in Lua\n");
+
+    /*
+     * Lua script loading
+     */
+
+    printf("===\n");
+    luaL_dofile(L, "scripts");
+    printf("===\n");
+    printf("Loaded Lua scripts\n");
+    printf("===\n");
+
+    /*
+     * Program execution
+     */
+
+    lua_getglobal(L, "print");
+    lua_pushstring(L, "Hello World from Lua from C++");
+    if (lua_pcall(L, 1, 0, 0) != LUA_OK) {
+        luaL_error(L, lua_tostring(L, -1));
+    }
+
+    lua_getglobal(L, "Player");
+    lua_getfield(L, -1, "new");
+    lua_newtable(L);
+    lua_pushstring(L, "SOME ENTITY");
+    lua_setfield(L, -2, "entityId");
+    printLua(L);
+    //lua_pop(L, 1);
+    if (lua_pcall(L, 1, 0, 0) != LUA_OK) {
+        luaL_error(L, lua_tostring(L, -1));
+    }
+    printf("Created player instance\n");
+
+    lua_getfield(L, -1, "onUpdate");
+    if (lua_pcall(L, 0, 0, 0) != LUA_OK) {
+        luaL_error(L, lua_tostring(L, -1));
+    }
+    printf("Updated player instance\n");
+
+    printf("Entities:\n");
+    for (auto& entity : scene.Entities) {
+        printf("  - %s (%s)\n", entity.Id.c_str(), entity.ScriptComponent.Type.c_str());
+    }
+
+    return 0;
 }
