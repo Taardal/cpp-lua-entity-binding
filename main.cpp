@@ -105,6 +105,12 @@ static int create(lua_State* L) {
     lua_newtable(L);
     lua_setuservalue(L, userdataIndex);
 
+    // Pseudo-inheritance
+    //   Player = Entity.new()
+    //   p = Player.new()
+    lua_pushcclosure(L, create, 0);
+    lua_setfield(L, -2, "new");
+
     constexpr int createdCount = 1;
     return createdCount;
 }
