@@ -235,30 +235,22 @@ int main() {
         luaL_error(L, lua_tostring(L, -1));
     }
 
-    lua_getglobal(L, "Player");
-    lua_getfield(L, -1, "new");
-    lua_pushstring(L, "foobar123456789");
-    if (lua_pcall(L, 1, 1, 0) != LUA_OK) {
-        luaL_error(L, lua_tostring(L, -1));
-    }
+    for (const auto& iterator : scene.Entities) {
+        const std::string entityId = iterator.first;
+        const Entity& entity = iterator.second;
 
-    lua_getfield(L, -1, "onUpdate");
-    lua_pushvalue(L, -2);
-    if (lua_pcall(L, 1, 0, 0) != LUA_OK) {
-        luaL_error(L, lua_tostring(L, -1));
-    }
+        lua_getglobal(L, entity.ScriptComponent.Type.c_str());
+        lua_getfield(L, -1, "new");
+        lua_pushstring(L, entity.Id.c_str());
+        if (lua_pcall(L, 1, 1, 0) != LUA_OK) {
+            luaL_error(L, lua_tostring(L, -1));
+        }
 
-    lua_getglobal(L, "Player");
-    lua_getfield(L, -1, "new");
-    lua_pushstring(L, "some_completely_other_id_because_reasons");
-    if (lua_pcall(L, 1, 1, 0) != LUA_OK) {
-        luaL_error(L, lua_tostring(L, -1));
-    }
-
-    lua_getfield(L, -1, "onUpdate");
-    lua_pushvalue(L, -2);
-    if (lua_pcall(L, 1, 0, 0) != LUA_OK) {
-        luaL_error(L, lua_tostring(L, -1));
+        lua_getfield(L, -1, "onUpdate");
+        lua_pushvalue(L, -2);
+        if (lua_pcall(L, 1, 0, 0) != LUA_OK) {
+            luaL_error(L, lua_tostring(L, -1));
+        }
     }
 
     return 0;
