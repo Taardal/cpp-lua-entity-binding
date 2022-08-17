@@ -19,24 +19,90 @@ struct Scene {
     std::unordered_map<std::string, Entity> Entities;
 };
 
+struct EntityBinding {
+    std::string entityId = "FOO_ENTITY";
+
+    EntityBinding() {
+        printf("FOO CREATED\n");
+    }
+
+    ~EntityBinding() {
+        printf("FOO DESTROYED\n");
+    }
+};
+
 static int newIndex(lua_State* L) {
     printf("NEW_INDEX\n");
-    return 0;
-}
 
-static int index(lua_State* L) {
-    printf("INDEX\n");
+    constexpr int bottomOfLuaStackIndex = 1;
+    int userdataIndex = bottomOfLuaStackIndex;
+    int keyIndex = userdataIndex + 1;
+    int valueIndex = keyIndex + 1;
+
+    const char* key = lua_tostring(L, keyIndex);
+
+    bool indexFound = false;
+    if (strcmp(key, "entityId") == 0) {
+        const char* value = lua_tostring(L, valueIndex);
+        printf("Setting [%s] = %s\n", key, value);
+
+        auto* foo = (EntityBinding*) lua_touserdata(L, userdataIndex);
+        foo->entityId = std::string(value);
+
+        indexFound = true;
+    }
+
+    if (!indexFound) {
+        luaL_error(L, "Could not set index by key [%s]", key);
+    }
     return 0;
 }
 
 static int destroy(lua_State* L) {
     printf("DESTROY\n");
+    auto* foo = (EntityBinding*) lua_touserdata(L, -1);
+    foo->~EntityBinding();
+    return 0;
+}
+
+static int index(lua_State* L) {
+    printf("INDEX\n");
+
+    constexpr int bottomOfLuaStackIndex = 1;
+    int userdataIndex = bottomOfLuaStackIndex;
+    int keyIndex = userdataIndex + 1;
+
+    const char* key = lua_tostring(L, keyIndex);
+    //printf("Indexing userdata by key [%s]\n", key);
+
+    if (strcmp(key, "entityId") == 0) {
+        auto* foo = (EntityBinding*) lua_touserdata(L, userdataIndex);
+        lua_pushstring(L, foo->entityId.c_str());
+        return 1;
+    }
+
+    luaL_error(L, "Could not get index by key [%s]", key);
     return 0;
 }
 
 static int create(lua_State* L) {
     printf("CREATE\n");
-    return 0;
+
+    std::string typeName = "Entity";
+    std::string metatableName = typeName + "__metatable";
+
+    void* userdata = lua_newuserdata(L, sizeof(EntityBinding));
+    new(userdata) EntityBinding();
+    int userdataIndex = lua_gettop(L);
+
+    luaL_getmetatable(L, metatableName.c_str());
+    lua_setmetatable(L, userdataIndex);
+
+    lua_newtable(L);
+    lua_setuservalue(L, userdataIndex);
+
+    constexpr int createdCount = 1;
+    return createdCount;
 }
 
 void foo(lua_State* L, Scene* scene) {
@@ -45,9 +111,6 @@ void foo(lua_State* L, Scene* scene) {
     lua_newtable(L);
     lua_pushvalue(L, -1);
     lua_setglobal(L, typeName.c_str());
-
-
-
     {
         lua_pushlightuserdata(L, (void*) scene);
         constexpr int upvalueCount = 1;
@@ -55,11 +118,9 @@ void foo(lua_State* L, Scene* scene) {
         lua_setfield(L, -2, "new");
         //printf("added new/create function with upvalue [%s]\n", typeName.c_str());
     }
-
     std::string metatableName = typeName + "__metatable";
     luaL_newmetatable(L, metatableName.c_str());
     //printf("created metatable [%s]\n", metatableName.c_str());
-
     {
         lua_pushstring(L, "__gc");
         lua_pushcfunction(L, destroy);
@@ -111,7 +172,19 @@ int main() {
     printf("Registered userdatums in Lua\n");
 
     printf("===\n");
-    luaL_dofile(L, "scripts");
+    luaL_loadfile(L, "scripts");
+    constexpr int argumentCount = 0;
+    constexpr int resultCount = LUA_MULTRET;
+    constexpr int messageHandlerIndex = 0;
+    if (lua_pcall(L, argumentCount, resultCount, messageHandlerIndex) != LUA_OK) {
+        std::stringstream ss;
+        ss << "\n";
+        ss << " Could not run lua scripts (\n";
+        ss << "  " << lua_tostring(L, -1) << "\n";
+        ss << " )\n";
+        std::string error = ss.str();
+        luaL_error(L, error.c_str());
+    }
     printf("===\n");
     printf("Loaded Lua scripts\n");
     printf("===\n");
