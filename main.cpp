@@ -80,24 +80,33 @@ int main() {
         printLua(L, "createFn");
 
         // entity = entity or {}
-        if (lua_gettop(L) > 0) {
+        if (lua_gettop(L) == 0) {
+            lua_newtable(L);
+        } else {
+            /*
             lua_getfield(L, -1, "entityId");
             printf("%s\n", lua_tostring(L, -1));
-        } else {
-            lua_newtable(L);
+            lua_pop(L, 1);
+            */
+
         }
 
         // setmetatable(entity, self)
+
         lua_getglobal(L, "Entity");
         lua_setmetatable(L, -2);
 
         // self.__index = self
+        //printLua(L, "one");
         lua_getglobal(L, "Entity");
+        //printLua(L, "two");
         lua_pushvalue(L, -1);
+        //printLua(L, "three");
         lua_pushstring(L, "__index");
-        lua_settable(L, -3);
+        //printLua(L, "four");
+        //lua_settable(L, -3);
 
-        // return entity
+
         return 1;
     };
     lua_pushcclosure(L, createFn, upvalueCount);
@@ -134,20 +143,31 @@ int main() {
         luaL_error(L, lua_tostring(L, -1));
     }
 
+    printLua(L, "mark");
+    printf("%s\n", lua_tostring(L, -1));
+
     lua_getglobal(L, "Player");
     lua_getfield(L, -1, "new");
+
+    //lua_pushlightuserdata(L, &scene);
+
     lua_newtable(L);
     lua_pushstring(L, "SOME ENTITY");
     lua_setfield(L, -2, "entityId");
-    printLua(L);
-    //lua_pop(L, 1);
-    if (lua_pcall(L, 1, 0, 0) != LUA_OK) {
+
+    if (lua_pcall(L, 1, 1, 0) != LUA_OK) {
         luaL_error(L, lua_tostring(L, -1));
     }
     printf("Created player instance\n");
 
+    lua_getfield(L, -2, "foo");
+    printf("%s\n", lua_tostring(L, -1));
+
+    return 0;
     lua_getfield(L, -1, "onUpdate");
-    if (lua_pcall(L, 0, 0, 0) != LUA_OK) {
+    lua_pushvalue(L, -2);
+    //lua_pushstring(L, "bbbb");
+    if (lua_pcall(L, 1, 0, 0) != LUA_OK) {
         luaL_error(L, lua_tostring(L, -1));
     }
     printf("Updated player instance\n");
