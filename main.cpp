@@ -49,7 +49,7 @@ static int newIndex(lua_State* L) {
         indexFound = true;
     }
     if (!indexFound) {
-        // Set new index on lua table (i.e. index that does not exist on C++ class)
+        // Key does not exist on C++ class, attempt to set key=value on lua table
         lua_getuservalue(L, userdataIndex);
         lua_pushvalue(L, keyIndex);
         lua_pushvalue(L, valueIndex);
@@ -81,7 +81,7 @@ static int index(lua_State* L) {
         indexFound = true;
     }
     if (!indexFound) {
-        // Attempt to get value from lua table
+        // Key does not exist on C++ class, attempt to get it from lua table
         lua_getuservalue(L, userdataIndex);
         lua_pushvalue(L, keyIndex);
         lua_gettable(L, -2);
@@ -114,13 +114,22 @@ static int createType(lua_State* L) {
 
     std::string typeName = "Entity";
 
-    // o
+    /*
+     * function Entity:new(entity)
+     *   entity = entity or {}
+     *   setmetatable(entity, self)
+     *   self.__index = self
+     *   return entity
+     * end
+     */
+
+    // entity
     lua_newtable(L);
 
     // self
     lua_getglobal(L, typeName.c_str());
 
-    // setmetatable(o, self)
+    // setmetatable(entity, self)
     lua_setmetatable(L, -2);
 
     // self.__index = self
@@ -141,6 +150,9 @@ void foo(lua_State* L, Scene* scene) {
     std::string typeName = "Entity";
     std::string metatableName = typeName + "__metatable";
 
+    /*
+     * Type table --> createType
+     */
     lua_newtable(L);
     lua_pushvalue(L, -1);
     lua_setglobal(L, typeName.c_str());
@@ -151,6 +163,9 @@ void foo(lua_State* L, Scene* scene) {
         lua_setfield(L, -2, "new");
     }
 
+    /*
+     * Instance metatable --> createInstance
+     */
     luaL_newmetatable(L, metatableName.c_str());
     {
         lua_pushstring(L, "__gc");
