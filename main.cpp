@@ -32,8 +32,6 @@ struct EntityBinding {
 };
 
 static int newIndex(lua_State* L) {
-    //printf("NEW_INDEX\n");
-
     constexpr int bottomOfLuaStackIndex = 1;
     int userdataIndex = bottomOfLuaStackIndex;
     int keyIndex = userdataIndex + 1;
@@ -59,15 +57,12 @@ static int newIndex(lua_State* L) {
 }
 
 static int destroy(lua_State* L) {
-    //printf("DESTROY\n");
     auto* foo = (EntityBinding*) lua_touserdata(L, -1);
     foo->~EntityBinding();
     return 0;
 }
 
 static int index(lua_State* L) {
-    //printf("INDEX\n");
-
     constexpr int bottomOfLuaStackIndex = 1;
     int userdataIndex = bottomOfLuaStackIndex;
     int keyIndex = userdataIndex + 1;
@@ -90,8 +85,8 @@ static int index(lua_State* L) {
 }
 
 static int createInstance(lua_State* L) {
-    //printf("CREATE\n");
 
+    // MAKE ME DYNAMIC ??
     std::string typeName = "Entity";
     std::string metatableName = typeName + "__metatable";
 
@@ -109,54 +104,42 @@ static int createInstance(lua_State* L) {
     lua_pushcclosure(L, createInstance, upvalueCount);
     lua_setfield(L, -2, "new");
 
-    //printf("----- ????? -----\n");
+    // MAKE ME DYNAMIC !!
     lua_getglobal(L, "Player");
-    if (lua_isnil(L, -1)) {
-        //printf("----- nil -----\n");
-    } else {
+
+    if (!lua_isnil(L, -1)) {
         lua_getfield(L, -1, "onUpdate");
         lua_setfield(L, -3, "onUpdate");
     }
     lua_pop(L, 1);
 
-    constexpr int createdCount = 1;
-    return createdCount;
+    return 1;
 }
 
 static int createType(lua_State* L) {
-    //printf("CREATE_TYPE\n");
 
+    // MAKE ME DYNAMIC ??
     std::string typeName = "Entity";
 
-    /*
-     * function Entity:new(entity)
-     *   entity = entity or {}
-     *   setmetatable(entity, self)
-     *   self.__index = self
-     *   return entity
-     * end
-     */
-
-    // entity
     lua_newtable(L);
 
-    // self
     lua_getglobal(L, typeName.c_str());
-
-    // setmetatable(entity, self)
     lua_setmetatable(L, -2);
 
-    // self.__index = self
     lua_getglobal(L, typeName.c_str());
     lua_pushstring(L, "__index");
     lua_pushvalue(L, -2);
     lua_settable(L, -3);
     lua_pop(L, 1);
 
+    //lua_pushlightuserdata(L, (void*) scene);
     constexpr int upvalueCount = 0;
     lua_pushcclosure(L, createInstance, upvalueCount);
     lua_setfield(L, -2, "new");
 
+    auto* scene = (Scene*) lua_touserdata(L, lua_upvalueindex(1));
+    printf("I have [%d] entities\n", (int) scene->Entities.size());
+    
     return 1;
 }
 
