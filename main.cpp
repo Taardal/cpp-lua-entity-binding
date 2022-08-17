@@ -89,7 +89,7 @@ static int index(lua_State* L) {
     return 1;
 }
 
-static int create(lua_State* L) {
+static int createInstance(lua_State* L) {
     printf("CREATE\n");
 
     std::string typeName = "Entity";
@@ -105,14 +105,36 @@ static int create(lua_State* L) {
     lua_newtable(L);
     lua_setuservalue(L, userdataIndex);
 
-    // Pseudo-inheritance
-    //   Player = Entity.new()
-    //   p = Player.new()
-    lua_pushcclosure(L, create, 0);
-    lua_setfield(L, -2, "new");
-
     constexpr int createdCount = 1;
     return createdCount;
+}
+
+static int createType(lua_State* L) {
+    printf("CREATE_TYPE\n");
+
+    std::string typeName = "Entity";
+
+    // o
+    lua_newtable(L);
+
+    // self
+    lua_getglobal(L, typeName.c_str());
+
+    // setmetatable(o, self)
+    lua_setmetatable(L, -2);
+
+    // self.__index = self
+    lua_getglobal(L, typeName.c_str());
+    lua_pushstring(L, "__index");
+    lua_pushvalue(L, -2);
+    lua_settable(L, -3);
+    lua_pop(L, 1);
+
+    constexpr int upvalueCount = 0;
+    lua_pushcclosure(L, createInstance, upvalueCount);
+    lua_setfield(L, -2, "new");
+
+    return 1;
 }
 
 void foo(lua_State* L, Scene* scene) {
@@ -125,7 +147,7 @@ void foo(lua_State* L, Scene* scene) {
     {
         lua_pushlightuserdata(L, (void*) scene);
         constexpr int upvalueCount = 1;
-        lua_pushcclosure(L, create, upvalueCount);
+        lua_pushcclosure(L, createType, upvalueCount);
         lua_setfield(L, -2, "new");
     }
 
@@ -216,6 +238,30 @@ int main() {
          *   return entity
          * end
          */
+
+/*
+
+ // self
+    lua_newtable(L);
+    lua_setuservalue(L, userdataIndex);
+
+    // o
+    lua_newtable(L);
+
+    // setmetatable(o, self)
+    lua_pushvalue(L, -2);
+    lua_setmetatable(L, -2);
+
+    // self.__index = self
+    lua_pushvalue(L, -2);
+    lua_pushstring(L, "__index");
+    lua_pushvalue(L, -2);
+    lua_settable(L, -3);
+    lua_pop(L, 1);
+
+*/
+
+
 
 /*
 printLua(L, "createFn");
