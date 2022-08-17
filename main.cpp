@@ -44,18 +44,18 @@ static int newIndex(lua_State* L) {
     bool indexFound = false;
     if (strcmp(key, "entityId") == 0) {
         const char* value = lua_tostring(L, valueIndex);
-        printf("Setting [%s] = %s\n", key, value);
-
         auto* foo = (EntityBinding*) lua_touserdata(L, userdataIndex);
         foo->entityId = std::string(value);
-
         indexFound = true;
     }
-
     if (!indexFound) {
-        luaL_error(L, "Could not set index by key [%s]", key);
+        // Set new index on lua table (i.e. index that does not exist on C++ class)
+        lua_getuservalue(L, userdataIndex);
+        lua_pushvalue(L, keyIndex);
+        lua_pushvalue(L, valueIndex);
+        lua_settable(L, -3);
     }
-    return 0;
+    return 1;
 }
 
 static int destroy(lua_State* L) {
@@ -73,16 +73,20 @@ static int index(lua_State* L) {
     int keyIndex = userdataIndex + 1;
 
     const char* key = lua_tostring(L, keyIndex);
-    //printf("Indexing userdata by key [%s]\n", key);
 
+    bool indexFound = false;
     if (strcmp(key, "entityId") == 0) {
         auto* foo = (EntityBinding*) lua_touserdata(L, userdataIndex);
         lua_pushstring(L, foo->entityId.c_str());
-        return 1;
+        indexFound = true;
     }
-
-    luaL_error(L, "Could not get index by key [%s]", key);
-    return 0;
+    if (!indexFound) {
+        // Attempt to get value from lua table
+        lua_getuservalue(L, userdataIndex);
+        lua_pushvalue(L, keyIndex);
+        lua_gettable(L, -2);
+    }
+    return 1;
 }
 
 static int create(lua_State* L) {
@@ -107,6 +111,7 @@ static int create(lua_State* L) {
 
 void foo(lua_State* L, Scene* scene) {
     std::string typeName = "Entity";
+    std::string metatableName = typeName + "__metatable";
 
     lua_newtable(L);
     lua_pushvalue(L, -1);
@@ -116,16 +121,13 @@ void foo(lua_State* L, Scene* scene) {
         constexpr int upvalueCount = 1;
         lua_pushcclosure(L, create, upvalueCount);
         lua_setfield(L, -2, "new");
-        //printf("added new/create function with upvalue [%s]\n", typeName.c_str());
     }
-    std::string metatableName = typeName + "__metatable";
+
     luaL_newmetatable(L, metatableName.c_str());
-    //printf("created metatable [%s]\n", metatableName.c_str());
     {
         lua_pushstring(L, "__gc");
         lua_pushcfunction(L, destroy);
         lua_settable(L, -3);
-        //printf("added garbage collect function to metatable [%s]\n", metatableName.c_str());
     }
     {
         lua_pushstring(L, "__index");
@@ -133,7 +135,6 @@ void foo(lua_State* L, Scene* scene) {
         constexpr int upvalueCount = 1;
         lua_pushcclosure(L, index, upvalueCount);
         lua_settable(L, -3);
-        //printf("added index function with upvalue [%s] to metatable [%s]\n", typeName.c_str(), metatableName.c_str());
     }
     {
         lua_pushstring(L, "__newindex");
@@ -141,7 +142,6 @@ void foo(lua_State* L, Scene* scene) {
         constexpr int upvalueCount = 1;
         lua_pushcclosure(L, newIndex, upvalueCount);
         lua_settable(L, -3);
-        //printf("added newindex function with upvalue [%s] to metatable [%s]\n", typeName.c_str(), metatableName.c_str());
     }
 }
 
