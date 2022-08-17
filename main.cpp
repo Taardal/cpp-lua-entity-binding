@@ -32,7 +32,7 @@ struct EntityBinding {
 };
 
 static int newIndex(lua_State* L) {
-    printf("NEW_INDEX\n");
+    //printf("NEW_INDEX\n");
 
     constexpr int bottomOfLuaStackIndex = 1;
     int userdataIndex = bottomOfLuaStackIndex;
@@ -59,14 +59,14 @@ static int newIndex(lua_State* L) {
 }
 
 static int destroy(lua_State* L) {
-    printf("DESTROY\n");
+    //printf("DESTROY\n");
     auto* foo = (EntityBinding*) lua_touserdata(L, -1);
     foo->~EntityBinding();
     return 0;
 }
 
 static int index(lua_State* L) {
-    printf("INDEX\n");
+    //printf("INDEX\n");
 
     constexpr int bottomOfLuaStackIndex = 1;
     int userdataIndex = bottomOfLuaStackIndex;
@@ -90,7 +90,7 @@ static int index(lua_State* L) {
 }
 
 static int createInstance(lua_State* L) {
-    printf("CREATE\n");
+    //printf("CREATE\n");
 
     std::string typeName = "Entity";
     std::string metatableName = typeName + "__metatable";
@@ -105,12 +105,26 @@ static int createInstance(lua_State* L) {
     lua_newtable(L);
     lua_setuservalue(L, userdataIndex);
 
+    constexpr int upvalueCount = 0;
+    lua_pushcclosure(L, createInstance, upvalueCount);
+    lua_setfield(L, -2, "new");
+
+    //printf("----- ????? -----\n");
+    lua_getglobal(L, "Player");
+    if (lua_isnil(L, -1)) {
+        //printf("----- nil -----\n");
+    } else {
+        lua_getfield(L, -1, "onUpdate");
+        lua_setfield(L, -3, "onUpdate");
+    }
+    lua_pop(L, 1);
+
     constexpr int createdCount = 1;
     return createdCount;
 }
 
 static int createType(lua_State* L) {
-    printf("CREATE_TYPE\n");
+    //printf("CREATE_TYPE\n");
 
     std::string typeName = "Entity";
 
@@ -146,7 +160,7 @@ static int createType(lua_State* L) {
     return 1;
 }
 
-void foo(lua_State* L, Scene* scene) {
+void initLuaBindings(lua_State* L, Scene* scene) {
     std::string typeName = "Entity";
     std::string metatableName = typeName + "__metatable";
 
@@ -211,7 +225,7 @@ int main() {
     luaL_openlibs(L);
     printf("Opened Lua standard libraries\n");
 
-    foo(L, &scene);
+    initLuaBindings(L, &scene);
     printf("Registered userdatums in Lua\n");
 
     printf("===\n");
@@ -244,62 +258,3 @@ int main() {
 
     return 0;
 }
-
-/*
-         * function Entity:new(entity)
-         *   entity = entity or {}
-         *   setmetatable(entity, self)
-         *   self.__index = self
-         *   return entity
-         * end
-         */
-
-/*
-
- // self
-    lua_newtable(L);
-    lua_setuservalue(L, userdataIndex);
-
-    // o
-    lua_newtable(L);
-
-    // setmetatable(o, self)
-    lua_pushvalue(L, -2);
-    lua_setmetatable(L, -2);
-
-    // self.__index = self
-    lua_pushvalue(L, -2);
-    lua_pushstring(L, "__index");
-    lua_pushvalue(L, -2);
-    lua_settable(L, -3);
-    lua_pop(L, 1);
-
-*/
-
-
-
-/*
-printLua(L, "createFn");
-
-// entity = entity or {}
-if (lua_gettop(L) == 0) {
-lua_newtable(L);
-} else {
-
-}
-
-// setmetatable(entity, self)
-
-lua_getglobal(L, "Entity");
-lua_setmetatable(L, -2);
-
-// self.__index = self
-//printLua(L, "one");
-lua_getglobal(L, "Entity");
-//printLua(L, "two");
-lua_pushvalue(L, -1);
-//printLua(L, "three");
-lua_pushstring(L, "__index");
-//printLua(L, "four");
-//lua_settable(L, -3);
-*/
