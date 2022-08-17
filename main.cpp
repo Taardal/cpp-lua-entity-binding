@@ -113,6 +113,9 @@ static int createInstance(lua_State* L) {
     }
     lua_pop(L, 1);
 
+    auto* scene = (Scene*) lua_touserdata(L, lua_upvalueindex(1));
+    printf("I have [%d] entities\n", (int) scene->Entities.size());
+
     return 1;
 }
 
@@ -132,14 +135,12 @@ static int createType(lua_State* L) {
     lua_settable(L, -3);
     lua_pop(L, 1);
 
-    //lua_pushlightuserdata(L, (void*) scene);
-    constexpr int upvalueCount = 0;
+    auto* scene = (Scene*) lua_touserdata(L, lua_upvalueindex(1));
+    lua_pushlightuserdata(L, (void*) scene);
+    constexpr int upvalueCount = 1;
     lua_pushcclosure(L, createInstance, upvalueCount);
     lua_setfield(L, -2, "new");
 
-    auto* scene = (Scene*) lua_touserdata(L, lua_upvalueindex(1));
-    printf("I have [%d] entities\n", (int) scene->Entities.size());
-    
     return 1;
 }
 
