@@ -42,20 +42,12 @@ struct EntityBinding {
     std::string entityId = "FOO_ENTITY";
     Entity* entity;
 
-    EntityBinding() {
-        println("FOO CREATED");
-    }
-
-    EntityBinding(const std::string& entityId) : entityId(entityId), entity(nullptr) {
-        println("FOO CREATED with entity id [%s]", entityId.c_str());
-    }
-
     EntityBinding(const std::string& entityId, Entity* entity) : entityId(entityId), entity(entity) {
-        println("FOO CREATED with entity id [%s]", entityId.c_str());
+        println("Created binding for entity with id [%s]", entityId.c_str());
     }
 
     ~EntityBinding() {
-        println("FOO DESTROYED");
+        println("Destroyed binding for entity with id [%s]", entityId.c_str());
     }
 
     void* getComponent(const std::string& componentType) const {
@@ -69,7 +61,6 @@ struct EntityBinding {
     }
 
     bool hasComponent(const std::string& componentType) const {
-        println("DO I HAVE %s", componentType.c_str());
         if (componentType == "ScriptComponent") {
             return true;
         }
@@ -81,13 +72,10 @@ struct EntityBinding {
 };
 
 static int newIndex(lua_State* L) {
-    println("NEW_INDEX");
-
     constexpr int bottomOfLuaStackIndex = 1;
     int userdataIndex = bottomOfLuaStackIndex;
     int keyIndex = userdataIndex + 1;
     int valueIndex = keyIndex + 1;
-
     std::string key = lua_tostring(L, keyIndex);
 
     bool indexFound = false;
@@ -107,20 +95,10 @@ static int newIndex(lua_State* L) {
     return 1;
 }
 
-static int destroy(lua_State* L) {
-    auto* binding = (EntityBinding*) lua_touserdata(L, -1);
-    binding->~EntityBinding();
-    return 0;
-}
-
 static int index(lua_State* L) {
-    println("INDEX");
-
     constexpr int bottomOfLuaStackIndex = 1;
     int userdataIndex = bottomOfLuaStackIndex;
     int keyIndex = userdataIndex + 1;
-    int valueIndex = keyIndex + 1;
-
     std::string key = lua_tostring(L, keyIndex);
 
     bool indexFound = false;
@@ -169,18 +147,16 @@ static int index(lua_State* L) {
     return 1;
 }
 
+static int destroy(lua_State* L) {
+    auto* binding = (EntityBinding*) lua_touserdata(L, -1);
+    binding->~EntityBinding();
+    return 0;
+}
+
 static int create(lua_State* L) {
-    println("CREATE");
+    std::string typeName = lua_tostring(L, lua_upvalueindex(1));
 
     std::string entityId = lua_tostring(L, 1);
-    println(" -- entityId [%s]", entityId.c_str());
-
-    std::string typeName = lua_tostring(L, lua_upvalueindex(1));
-    println(" -- typeName [%s]", typeName.c_str());
-
-    std::string metatableName = typeName + "__metatable";
-    println(" -- metatableName [%s]", metatableName.c_str());
-
     auto* scene = (Scene*) lua_touserdata(L, lua_upvalueindex(2));
     Entity& entity = scene->Entities[entityId];
 
@@ -188,6 +164,7 @@ static int create(lua_State* L) {
     new(userdata) EntityBinding(entityId, &entity);
     int userdataIndex = lua_gettop(L);
 
+    std::string metatableName = typeName + "__metatable";
     luaL_getmetatable(L, metatableName.c_str());
     lua_setmetatable(L, userdataIndex);
 
@@ -258,7 +235,7 @@ int main() {
 
     Entity camera;
     camera.Id = "camera";
-    camera.ScriptComponent.Type = "Player";
+    camera.ScriptComponent.Type = "Camera";
 
     Scene scene{};
     scene.Entities[player.Id] = player;
@@ -279,9 +256,8 @@ int main() {
     println("Opened Lua standard libraries");
 
     initLuaBindings(L, &scene);
-    println("Registered userdatums in Lua");
+    println("Registered Lua bindings");
 
-    println("===");
     luaL_loadfile(L, "scripts");
     constexpr int argumentCount = 0;
     constexpr int resultCount = LUA_MULTRET;
@@ -295,7 +271,6 @@ int main() {
         std::string error = ss.str();
         luaL_error(L, error.c_str());
     }
-    println("===");
     println("Loaded Lua scripts");
     println("===");
 
@@ -310,7 +285,6 @@ int main() {
     }
 
     for (const auto& iterator : scene.Entities) {
-        const std::string entityId = iterator.first;
         const Entity& entity = iterator.second;
 
         lua_getglobal(L, entity.ScriptComponent.Type.c_str());
@@ -320,6 +294,17 @@ int main() {
             luaL_error(L, lua_tostring(L, -1));
         }
 
+        lua_getfield(L, -1, "onCreate");
+        lua_pushvalue(L, -2);
+        if (lua_pcall(L, 1, 0, 0) != LUA_OK) {
+            luaL_error(L, lua_tostring(L, -1));
+        }
+    }
+
+    for (const auto& iterator : scene.Entities) {
+        const Entity& entity = iterator.second;
+
+        lua_getglobal(L, entity.ScriptComponent.Type.c_str());
         lua_getfield(L, -1, "onUpdate");
         lua_pushvalue(L, -2);
         if (lua_pcall(L, 1, 0, 0) != LUA_OK) {
