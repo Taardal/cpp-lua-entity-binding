@@ -1,27 +1,24 @@
-function Player:onCreate()
-    print("Player:onCreate")
-    print("self.entityId .. " .. self.entityId)
-    print("self.type .. " .. self.type)
-    print("self.transform .. " .. self.transform.x .. ", " .. self.transform.y)
-    print("self.hasComponent('ScriptComponent') .. " .. tostring(self.hasComponent('ScriptComponent')))
-    print("self.hasComponent('TransformComponent') .. " .. tostring(self.hasComponent('TransformComponent')))
-    print("self.hasComponent('FooComponent') .. " .. tostring(self.hasComponent('FooComponent')))
+require("player")
+require("camera")
+require("debug")
+
+local entities = {}
+
+function onCreateEntity(entity)
+    entities[entity.entityId] = entity
+    if (entity.onCreate ~= nil) then
+        entity:onCreate()
+    end
 end
 
-function Player:onUpdate()
-    print("Player:onUpdate")
+function onUpdateEntity(entityId)
+    entities[entityId]:onUpdate()
 end
 
-function Camera:onCreate()
-    print("Camera:onCreate")
-    print("self.entityId .. " .. self.entityId)
-    print("self.type .. " .. self.type)
-    print("self.transform .. " .. self.transform.x .. ", " .. self.transform.y)
-    print("self.hasComponent('ScriptComponent') .. " .. tostring(self.hasComponent('ScriptComponent')))
-    print("self.hasComponent('TransformComponent') .. " .. tostring(self.hasComponent('TransformComponent')))
-    print("self.hasComponent('FooComponent') .. " .. tostring(self.hasComponent('FooComponent')))
-end
-
-function Camera:onUpdate()
-    print("Camera:onUpdate")
+function onDestroyEntity(entityId)
+    entity = entities[entityId]
+    if (entity.onDestroy ~= nil) then
+        entity:onDestroy()
+    end
+    entities[entityId] = nil
 end

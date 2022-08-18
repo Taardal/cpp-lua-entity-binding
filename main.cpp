@@ -39,7 +39,7 @@ struct Scene {
 };
 
 struct EntityBinding {
-    std::string entityId = "FOO_ENTITY";
+    std::string entityId;
     Entity* entity;
 
     EntityBinding(const std::string& entityId, Entity* entity) : entityId(entityId), entity(entity) {
@@ -178,6 +178,9 @@ static int create(lua_State* L) {
     const char* onUpdateFn = "onUpdate";
     lua_getfield(L, -1, onUpdateFn);
     lua_setfield(L, -3, onUpdateFn);
+    const char* onDestroyFn = "onDestroy";
+    lua_getfield(L, -1, onDestroyFn);
+    lua_setfield(L, -3, onDestroyFn);
     lua_pop(L, 1);
 
     return 1;
@@ -226,7 +229,7 @@ int main() {
     println("===");
 
     /*
-     * Scene/Entities init
+     * Entities init
      */
 
     Entity player;
@@ -237,14 +240,20 @@ int main() {
     camera.Id = "camera";
     camera.ScriptComponent.Type = "Camera";
 
+    Entity enemy;
+    enemy.Id = "enemy";
+    enemy.ScriptComponent.Type = "Player";
+
     Scene scene{};
     scene.Entities[player.Id] = player;
     scene.Entities[camera.Id] = camera;
+    scene.Entities[enemy.Id] = enemy;
 
     for (const auto& iterator : scene.Entities) {
         const Entity& entity = iterator.second;
         scene.Types.insert(entity.ScriptComponent.Type);
     }
+
     /*
      * Lua init
      */
@@ -275,7 +284,7 @@ int main() {
     println("===");
 
     /*
-     * Program execution
+     * Execution
      */
 
     lua_getglobal(L, "print");
@@ -294,7 +303,7 @@ int main() {
             luaL_error(L, lua_tostring(L, -1));
         }
 
-        lua_getfield(L, -1, "onCreate");
+        lua_getglobal(L, "onCreateEntity");
         lua_pushvalue(L, -2);
         if (lua_pcall(L, 1, 0, 0) != LUA_OK) {
             luaL_error(L, lua_tostring(L, -1));
@@ -304,13 +313,34 @@ int main() {
     for (const auto& iterator : scene.Entities) {
         const Entity& entity = iterator.second;
 
-        lua_getglobal(L, entity.ScriptComponent.Type.c_str());
-        lua_getfield(L, -1, "onUpdate");
-        lua_pushvalue(L, -2);
+        lua_getglobal(L, "onUpdateEntity");
+        lua_pushstring(L, entity.Id.c_str());
         if (lua_pcall(L, 1, 0, 0) != LUA_OK) {
             luaL_error(L, lua_tostring(L, -1));
         }
     }
 
+    lua_getglobal(L, "onDestroyEntity");
+    lua_pushstring(L, scene.Entities["player"].Id.c_str());
+    if (lua_pcall(L, 1, 0, 0) != LUA_OK) {
+        luaL_error(L, lua_tostring(L, -1));
+    }
+    scene.Entities.erase("player");
+
+    for (const auto& iterator : scene.Entities) {
+        const Entity& entity = iterator.second;
+
+        lua_getglobal(L, "onUpdateEntity");
+        lua_pushstring(L, entity.Id.c_str());
+        if (lua_pcall(L, 1, 0, 0) != LUA_OK) {
+            luaL_error(L, lua_tostring(L, -1));
+        }
+    }
+
+    /*
+     * Cleanup
+     */
+
+    lua_close(L);
     return 0;
 }
