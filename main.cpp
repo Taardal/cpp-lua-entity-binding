@@ -4,6 +4,7 @@
 #include <sstream>
 #include <unordered_map>
 #include <vector>
+#include <any>
 
 #if 1
 #define println(x, ...) printf(x, ##__VA_ARGS__); printf("\n")
@@ -316,6 +317,220 @@ public:
     }
 };
 
+struct LuaFunction {
+    std::string name;
+    std::string tableName;
+    int argumentCount = 0;
+    int returnValueCount = 0;
+    int messageHandlerIndex = 0;
+    std::function<void(lua_State*)> onPushArguments = nullptr;
+    std::function<void(lua_State*)> onError = nullptr;
+
+    void invoke(lua_State* L) const {
+        if (!tableName.empty()) {
+            lua_getglobal(L, tableName.c_str());
+            lua_getfield(L, -1, name.c_str());
+        } else if (!name.empty()) {
+            lua_getglobal(L, name.c_str());
+        }
+        if (onPushArguments) {
+            onPushArguments(L);
+        }
+        if (lua_pcall(L, argumentCount, returnValueCount, messageHandlerIndex) != LUA_OK) {
+            if (onError) {
+                onError(L);
+            } else {
+                luaL_error(L, "Could not invoke function [%s]: %s", name.c_str(), lua_tostring(L, -1));
+            }
+        }
+    }
+
+    template<typename ...Argument>
+    void invoke(lua_State* L, const char* signature, const Argument& ...argument) {
+        if (!tableName.empty()) {
+            lua_getglobal(L, tableName.c_str());
+            lua_getfield(L, -1, name.c_str());
+        } else if (!name.empty()) {
+            lua_getglobal(L, name.c_str());
+        }
+        LuaFunction::invoke(L, signature, argument...);
+    }
+    
+    template<typename ...Argument>
+    static void invokeOnTable(lua_State* L, const char* tableName, const char* functionName, const char* signature, const Argument& ...argument) {
+        lua_getglobal(L, tableName);
+        lua_getfield(L, -1, functionName);
+        if (invoke(L, signature, argument...) != LUA_OK) {
+            luaL_error(L, "Could not invoke function [%s] on table [%s]: %s", functionName, tableName, lua_tostring(L, -1));
+        }
+    }
+
+    template<typename ...Argument>
+    static void invoke(lua_State* L, const char* functionName, const char* signature, const Argument& ...argument) {
+        lua_getglobal(L, functionName);
+        if (invokeWithSignature(L, signature, argument...) != LUA_OK) {
+            luaL_error(L, "Could not invoke function [%s]: %s", functionName, lua_tostring(L, -1));
+        }
+    }
+
+private:
+    static int invokeWithSignature(lua_State* L, const char* signature, ...) {
+        va_list argumentList;
+        va_start(argumentList, signature);
+
+        int argumentCount = 0;
+        bool allArgumentsPushed = false;
+        while (*signature && !allArgumentsPushed) {
+            switch (*signature++) {
+                case 'd':
+                    lua_pushnumber(L, va_arg(argumentList, double));
+                    break;
+                case 'i':
+                    lua_pushnumber(L, va_arg(argumentList, int));
+                    break;
+                case 's':
+                    lua_pushstring(L, va_arg(argumentList, char*));
+                    break;
+                case '>':
+                    allArgumentsPushed = true;
+                    break;
+                default:
+                    luaL_error(L, "Invalid argument type specified (%c)", *(signature - 1));
+            }
+            argumentCount++;
+            constexpr int minimumRequiredStackSpace = 1;
+            luaL_checkstack(L, minimumRequiredStackSpace, "Too many arguments on the stack");
+        }
+
+        int returnValueCount = (int) strlen(signature);
+        constexpr int messageHandlerIndex = 0;
+        int result = lua_pcall(L, argumentCount, returnValueCount, messageHandlerIndex);
+        if (result != LUA_OK) {
+            return result;
+        }
+
+        returnValueCount = -returnValueCount; // stack index of first result
+        while (*signature) {
+            switch (*signature++) {
+                case 'd':
+                    if (!lua_isnumber(L, returnValueCount)) {
+                        luaL_error(L, "wrong result type");
+                    }
+                    *va_arg(argumentList, double*) = lua_tonumber(L, returnValueCount);
+                    break;
+                case 'i':
+                    if (!lua_isnumber(L, returnValueCount)) {
+                        luaL_error(L, "wrong result type");
+                    }
+                    *va_arg(argumentList, int*) = (int)lua_tonumber(L, returnValueCount);
+                    break;
+                case 's':
+                    if (!lua_isstring(L, returnValueCount)) {
+                        luaL_error(L, "wrong result type");
+                    }
+                    *va_arg(argumentList, const char**) = lua_tostring(L, returnValueCount);
+                    break;
+                default:
+                    luaL_error(L, "Invalid return type specified (%c)", *(signature - 1));
+            }
+            returnValueCount++;
+        }
+        va_end(argumentList);
+        return LUA_OK;
+    }
+};
+
+/**
+ * Lua: A Generic Call Function
+ *
+ * This functions does the following:
+ *   1. Pushes the function to the stack
+ *   2. Pushes the arguments to the stack
+ *   3. Invokes the function
+ *   4. Gets the results
+ *
+ * The signature are letters which specifies arguments and results
+ *   - `d´ for double
+ *   - `i´ for integer
+ *   - `s´ for strings
+ *   - `>´ separates arguments from the results. If the function has no results, the `>´ is optional.
+ *   Example:
+ *     - "dd>s" means "two arguments of type double, one result of type double"
+ *     - "ds" means "one argument of type double, one argument of type string, no results"
+ *
+ * Things to note:
+ *   1. It does not need to check whether func is a function; lua_pcall will trigger any occasional error.
+ *   2. Because it pushes an arbitrary number of arguments, it must check the stack space.
+ *   3. Because the function may return strings, it cannot pop the results from the stack. It is up to the caller to pop them.
+ *
+ * Source:
+ *   - https://www.lua.org/pil/25.3.html
+ */
+void invokeLuaFn(lua_State* L, const char* functionName, const char* signature, ...) {
+    lua_getglobal(L, functionName);
+
+    va_list argumentList;
+    va_start(argumentList, signature);
+
+    int argumentCount = 0;
+    bool allArgumentsPushed = false;
+    while (*signature && !allArgumentsPushed) {
+        switch (*signature++) {
+            case 'd':
+                lua_pushnumber(L, va_arg(argumentList, double));
+                break;
+            case 'i':
+                lua_pushnumber(L, va_arg(argumentList, int));
+                break;
+            case 's':
+                lua_pushstring(L, va_arg(argumentList, char*));
+                break;
+            case '>':
+                allArgumentsPushed = true;
+                break;
+            default:
+                luaL_error(L, "Invalid argument type specified (%c)", *(signature - 1));
+        }
+        argumentCount++;
+        constexpr int minimumRequiredStackSpace = 1;
+        luaL_checkstack(L, minimumRequiredStackSpace, "Too many arguments on the stack");
+    }
+
+    int returnValueCount = (int) strlen(signature);
+    constexpr int messageHandlerIndex = 0;
+    if (lua_pcall(L, argumentCount, returnValueCount, messageHandlerIndex) != LUA_OK) {
+        luaL_error(L, "Could not invoke function [%s]: %s", functionName, lua_tostring(L, -1));
+    }
+
+    returnValueCount = -returnValueCount; // stack index of first result
+    while (*signature) {
+        switch (*signature++) {
+            case 'd':
+                if (!lua_isnumber(L, returnValueCount)) {
+                    luaL_error(L, "wrong result type");
+                }
+                *va_arg(argumentList, double*) = lua_tonumber(L, returnValueCount);
+                break;
+            case 'i':
+                if (!lua_isnumber(L, returnValueCount)) {
+                    luaL_error(L, "wrong result type");
+                }
+                *va_arg(argumentList, int*) = (int)lua_tonumber(L, returnValueCount);
+                break;
+            case 's':
+                if (!lua_isstring(L, returnValueCount)) {
+                    luaL_error(L, "wrong result type");
+                }
+                *va_arg(argumentList, const char**) = lua_tostring(L, returnValueCount);
+                break;
+            default:
+                luaL_error(L, "Invalid return type specified (%c)", *(signature - 1));
+        }
+        returnValueCount++;
+    }
+    va_end(argumentList);
+}
+
 int main() {
     println("Hello World");
     println("===");
@@ -360,17 +575,20 @@ int main() {
     println("Registered Lua bindings");
 
     luaL_loadfile(L, "scripts");
-    constexpr int argumentCount = 0;
-    constexpr int resultCount = LUA_MULTRET;
-    constexpr int messageHandlerIndex = 0;
-    if (lua_pcall(L, argumentCount, resultCount, messageHandlerIndex) != LUA_OK) {
-        std::stringstream ss;
-        ss << "\n";
-        ss << " Could not run lua scripts (\n";
-        ss << "  " << lua_tostring(L, -1) << "\n";
-        ss << " )\n";
-        std::string error = ss.str();
-        luaL_error(L, error.c_str());
+    {
+        LuaFunction fn{};
+        fn.argumentCount = 0;
+        fn.returnValueCount = LUA_MULTRET;
+        fn.onError = [](lua_State* L) {
+            std::stringstream ss;
+            ss << "\n";
+            ss << " Could not run lua scripts (\n";
+            ss << "  " << lua_tostring(L, -1) << "\n";
+            ss << " )\n";
+            std::string error = ss.str();
+            luaL_error(L, error.c_str());
+        };
+        fn.invoke(L);
     }
     println("Loaded Lua scripts");
     println("===");
@@ -379,53 +597,79 @@ int main() {
      * Execution
      */
 
-    lua_getglobal(L, "print");
-    lua_pushstring(L, "Hello World from Lua from C++");
-    if (lua_pcall(L, 1, 0, 0) != LUA_OK) {
-        luaL_error(L, lua_tostring(L, -1));
+    //LuaFunction::invoke(L, "print", "s", "Hello World from Lua from C++");
+    {
+        LuaFunction fn{};
+        fn.name = "print";
+        fn.argumentCount = 1;
+        fn.onPushArguments = [](lua_State* L) {
+            lua_pushstring(L, "Hello World from Lua from C++");
+        };
+        fn.invoke(L);
+    }
+
+
+    for (const auto& iterator : scene.entities) {
+        const Entity& entity = iterator.second;
+        {
+            LuaFunction fn{};
+            fn.name = "new";
+            fn.tableName = entity.scriptComponent.type;
+            fn.argumentCount = 1;
+            fn.returnValueCount = 1;
+            fn.onPushArguments = [&entity](lua_State* L) {
+                lua_pushstring(L, entity.id.c_str());
+            };
+            fn.invoke(L);
+        }
+        {
+            LuaFunction fn{};
+            fn.name = "onCreateEntity";
+            fn.argumentCount = 1;
+            fn.onPushArguments = [](lua_State* L) {
+                lua_pushvalue(L, -2);
+            };
+            fn.invoke(L);
+        }
     }
 
     for (const auto& iterator : scene.entities) {
         const Entity& entity = iterator.second;
-
-        lua_getglobal(L, entity.scriptComponent.type.c_str());
-        lua_getfield(L, -1, "new");
-        lua_pushstring(L, entity.id.c_str());
-        if (lua_pcall(L, 1, 1, 0) != LUA_OK) {
-            luaL_error(L, lua_tostring(L, -1));
-        }
-
-        lua_getglobal(L, "onCreateEntity");
-        lua_pushvalue(L, -2);
-        if (lua_pcall(L, 1, 0, 0) != LUA_OK) {
-            luaL_error(L, lua_tostring(L, -1));
+        //LuaFunction::invoke(L, "onUpdateEntity", "s", entity.id.c_str());
+        {
+            LuaFunction fn{};
+            fn.name = "onUpdateEntity";
+            fn.argumentCount = 1;
+            fn.onPushArguments = [&entity](lua_State* L) {
+                lua_pushstring(L, entity.id.c_str());
+            };
+            fn.invoke(L);
         }
     }
 
-    for (const auto& iterator : scene.entities) {
-        const Entity& entity = iterator.second;
-
-        lua_getglobal(L, "onUpdateEntity");
-        lua_pushstring(L, entity.id.c_str());
-        if (lua_pcall(L, 1, 0, 0) != LUA_OK) {
-            luaL_error(L, lua_tostring(L, -1));
-        }
-    }
-
-    lua_getglobal(L, "onDestroyEntity");
-    lua_pushstring(L, scene.entities["player"].id.c_str());
-    if (lua_pcall(L, 1, 0, 0) != LUA_OK) {
-        luaL_error(L, lua_tostring(L, -1));
+    //LuaFunction::invoke(L, "onDestroyEntity", "s", player.id.c_str());
+    {
+        LuaFunction fn{};
+        fn.name = "onDestroyEntity";
+        fn.argumentCount = 1;
+        fn.onPushArguments = [&player](lua_State* L) {
+            lua_pushstring(L, player.id.c_str());
+        };
+        fn.invoke(L);
     }
     scene.entities.erase("player");
 
     for (const auto& iterator : scene.entities) {
         const Entity& entity = iterator.second;
-
-        lua_getglobal(L, "onUpdateEntity");
-        lua_pushstring(L, entity.id.c_str());
-        if (lua_pcall(L, 1, 0, 0) != LUA_OK) {
-            luaL_error(L, lua_tostring(L, -1));
+        //LuaFunction::invoke(L, "onUpdateEntity", "s", entity.id.c_str());
+        {
+            LuaFunction fn{};
+            fn.name = "onUpdateEntity";
+            fn.argumentCount = 1;
+            fn.onPushArguments = [&entity](lua_State* L) {
+                lua_pushstring(L, entity.id.c_str());
+            };
+            fn.invoke(L);
         }
     }
 
