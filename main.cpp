@@ -11,16 +11,20 @@
 #define println(x, ...)
 #endif
 
-extern void printLua(lua_State* L, const std::string& tag = "NOTICE ME");
+extern void printLua(lua_State* L, const std::string& tag = "LUA STACK");
+
+std::string getMetatableName(const std::string& tableName) {
+    return tableName + "__meta";
+}
 
 struct ScriptComponent {
-    std::string Type;
+    std::string type;
 };
 
 struct TransformComponent {
-    float X = 0.0;
-    float Y = 0.0;
-    float Z = 0.0;
+    float x = 0.0;
+    float y = 0.0;
+    float z = 0.0;
 
     TransformComponent() = default;
 
@@ -28,70 +32,135 @@ struct TransformComponent {
 };
 
 struct Entity {
-    std::string Id;
-    ScriptComponent ScriptComponent;
-    TransformComponent TransformComponent;
+    std::string id;
+    ScriptComponent scriptComponent;
+    TransformComponent transformComponent;
 };
 
 struct Scene {
-    std::unordered_map<std::string, Entity> Entities;
-    std::set<std::string> Types;
+    std::unordered_map<std::string, Entity> entities;
+    std::set<std::string> types;
+};
+
+struct Input {
+    bool isKeyPressed(const std::string& key) const {
+        if (key == "Esc") {
+            return true;
+        }
+        return false;
+    }
 };
 
 struct EntityBinding {
-    std::string entityId;
+private:
     Entity* entity;
 
-    EntityBinding(const std::string& entityId, Entity* entity) : entityId(entityId), entity(entity) {
-        println("Created binding for entity with id [%s]", entityId.c_str());
+public:
+    explicit EntityBinding(Entity* entity) : entity(entity) {
+        println("Created binding for entity with id [%s]", entity->id.c_str());
     }
 
     ~EntityBinding() {
-        println("Destroyed binding for entity with id [%s]", entityId.c_str());
+        println("Destroyed binding for entity with id [%s]", entity->id.c_str());
+    }
+
+    std::string getId() const {
+        return entity->id;
+    }
+
+    void setId(const std::string& id) const {
+        entity->id = id;
     }
 
     void* getComponent(const std::string& componentType) const {
-        if (componentType == "ScriptComponent") {
-            return &entity->ScriptComponent;
+        if (componentType == "scriptComponent") {
+            return &entity->scriptComponent;
         }
-        if (componentType == "TransformComponent") {
-            return &entity->TransformComponent;
+        if (componentType == "transformComponent") {
+            return &entity->transformComponent;
         }
         return nullptr;
     }
 
     bool hasComponent(const std::string& componentType) const {
-        if (componentType == "ScriptComponent") {
+        if (componentType == "scriptComponent") {
             return true;
         }
-        if (componentType == "TransformComponent") {
+        if (componentType == "transformComponent") {
             return true;
         }
         return false;
     }
 
-    static int newIndex(lua_State* L) {
-        constexpr int bottomOfLuaStackIndex = 1;
-        int userdataIndex = bottomOfLuaStackIndex;
-        int keyIndex = userdataIndex + 1;
-        int valueIndex = keyIndex + 1;
-        std::string key = lua_tostring(L, keyIndex);
-
-        bool indexFound = false;
-        if (key == "entityId") {
-            const char* value = lua_tostring(L, valueIndex);
-            auto* binding = (EntityBinding*) lua_touserdata(L, userdataIndex);
-            binding->entityId = std::string(value);
-            indexFound = true;
+    static void createType(lua_State* L, const std::string& typeName, const Scene& scene) {
+        std::string metatableName = getMetatableName(typeName);
+        lua_newtable(L);
+        lua_pushvalue(L, -1);
+        lua_setglobal(L, typeName.c_str());
+        {
+            lua_pushstring(L, typeName.c_str());
+            lua_pushlightuserdata(L, (void*) &scene);
+            constexpr int upvalueCount = 2;
+            lua_pushcclosure(L, EntityBinding::createInstance, upvalueCount);
+            lua_setfield(L, -2, "new");
         }
-        if (!indexFound) {
-            // Key does not exist on C++ class, attempt to set key=value on lua table
-            lua_getuservalue(L, userdataIndex);
-            lua_pushvalue(L, keyIndex);
-            lua_pushvalue(L, valueIndex);
+        luaL_newmetatable(L, metatableName.c_str());
+        {
+            lua_pushstring(L, "__gc");
+            lua_pushcfunction(L, EntityBinding::destroy);
             lua_settable(L, -3);
         }
+        {
+            lua_pushstring(L, "__index");
+            constexpr int upvalueCount = 0;
+            lua_pushcclosure(L, EntityBinding::index, upvalueCount);
+            lua_settable(L, -3);
+        }
+        {
+            lua_pushstring(L, "__newindex");
+            constexpr int upvalueCount = 0;
+            lua_pushcclosure(L, EntityBinding::newIndex, upvalueCount);
+            lua_settable(L, -3);
+        }
+    }
+
+    static int createInstance(lua_State* L) {
+        std::string typeName = lua_tostring(L, lua_upvalueindex(1));
+        std::string metatableName = getMetatableName(typeName);
+
+        std::string entityId = lua_tostring(L, 1);
+        auto* scene = (Scene*) lua_touserdata(L, lua_upvalueindex(2));
+        Entity& entity = scene->entities[entityId];
+
+        void* userdata = lua_newuserdata(L, sizeof(EntityBinding));
+        new(userdata) EntityBinding(&entity);
+        int userdataIndex = lua_gettop(L);
+
+        luaL_getmetatable(L, metatableName.c_str());
+        lua_setmetatable(L, userdataIndex);
+
+        lua_newtable(L);
+        lua_setuservalue(L, userdataIndex);
+
+        lua_getglobal(L, typeName.c_str());
+        const char* onCreateFn = "onCreate";
+        lua_getfield(L, -1, onCreateFn);
+        lua_setfield(L, -3, onCreateFn);
+        const char* onUpdateFn = "onUpdate";
+        lua_getfield(L, -1, onUpdateFn);
+        lua_setfield(L, -3, onUpdateFn);
+        const char* onDestroyFn = "onDestroy";
+        lua_getfield(L, -1, onDestroyFn);
+        lua_setfield(L, -3, onDestroyFn);
+        lua_pop(L, 1);
+
         return 1;
+    }
+
+    static int destroy(lua_State* L) {
+        auto* binding = (EntityBinding*) lua_touserdata(L, -1);
+        binding->~EntityBinding();
+        return 0;
     }
 
     static int index(lua_State* L) {
@@ -103,24 +172,24 @@ struct EntityBinding {
         bool indexFound = false;
         if (key == "entityId") {
             auto* binding = (EntityBinding*) lua_touserdata(L, userdataIndex);
-            lua_pushstring(L, binding->entityId.c_str());
+            lua_pushstring(L, binding->getId().c_str());
             indexFound = true;
         }
         if (key == "type") {
             auto* binding = (EntityBinding*) lua_touserdata(L, userdataIndex);
-            auto* scriptComponent = (ScriptComponent*) binding->getComponent("ScriptComponent");
-            lua_pushstring(L, scriptComponent->Type.c_str());
+            auto* scriptComponent = (ScriptComponent*) binding->getComponent("scriptComponent");
+            lua_pushstring(L, scriptComponent->type.c_str());
             indexFound = true;
         }
         if (key == "transform") {
             auto* binding = (EntityBinding*) lua_touserdata(L, userdataIndex);
-            auto* transformComponent = (TransformComponent*) binding->getComponent("TransformComponent");
+            auto* transformComponent = (TransformComponent*) binding->getComponent("transformComponent");
             lua_newtable(L);
-            lua_pushnumber(L, transformComponent->X);
+            lua_pushnumber(L, transformComponent->x);
             lua_setfield(L, -2, "x");
-            lua_pushnumber(L, transformComponent->Y);
+            lua_pushnumber(L, transformComponent->y);
             lua_setfield(L, -2, "y");
-            lua_pushnumber(L, transformComponent->Z);
+            lua_pushnumber(L, transformComponent->z);
             lua_setfield(L, -2, "z");
             indexFound = true;
         }
@@ -146,173 +215,133 @@ struct EntityBinding {
         return 1;
     }
 
-    static int destroy(lua_State* L) {
-        auto* binding = (EntityBinding*) lua_touserdata(L, -1);
-        binding->~EntityBinding();
-        return 0;
-    }
+    static int newIndex(lua_State* L) {
+        constexpr int bottomOfLuaStackIndex = 1;
+        int userdataIndex = bottomOfLuaStackIndex;
+        int keyIndex = userdataIndex + 1;
+        int valueIndex = keyIndex + 1;
+        std::string key = lua_tostring(L, keyIndex);
 
-    static int create(lua_State* L) {
-        std::string entityId = lua_tostring(L, 1);
-
-        std::string typeName = lua_tostring(L, lua_upvalueindex(1));
-        auto* scene = (Scene*) lua_touserdata(L, lua_upvalueindex(2));
-
-        Entity& entity = scene->Entities[entityId];
-        void* userdata = lua_newuserdata(L, sizeof(EntityBinding));
-        new(userdata) EntityBinding(entityId, &entity);
-        int userdataIndex = lua_gettop(L);
-
-        std::string metatableName = typeName + "__metatable";
-        luaL_getmetatable(L, metatableName.c_str());
-        lua_setmetatable(L, userdataIndex);
-
-        lua_newtable(L);
-        lua_setuservalue(L, userdataIndex);
-
-        lua_getglobal(L, typeName.c_str());
-        const char* onCreateFn = "onCreate";
-        lua_getfield(L, -1, onCreateFn);
-        lua_setfield(L, -3, onCreateFn);
-        const char* onUpdateFn = "onUpdate";
-        lua_getfield(L, -1, onUpdateFn);
-        lua_setfield(L, -3, onUpdateFn);
-        const char* onDestroyFn = "onDestroy";
-        lua_getfield(L, -1, onDestroyFn);
-        lua_setfield(L, -3, onDestroyFn);
-        lua_pop(L, 1);
-
+        bool indexFound = false;
+        if (key == "entityId") {
+            const char* value = lua_tostring(L, valueIndex);
+            auto* binding = (EntityBinding*) lua_touserdata(L, userdataIndex);
+            binding->setId(value);
+            indexFound = true;
+        }
+        if (!indexFound) {
+            // Key does not exist on C++ class, attempt to set key=value on lua table
+            lua_getuservalue(L, userdataIndex);
+            lua_pushvalue(L, keyIndex);
+            lua_pushvalue(L, valueIndex);
+            lua_settable(L, -3);
+        }
         return 1;
-    }
-};
-
-class Input {
-public:
-    void isKeyPressed(const std::string& key) {
-        println("KEY [%s] IS PRESSED", key.c_str());
     }
 };
 
 class InputBinding {
 private:
-    Input* input;
+    const Input* input;
 
 public:
-    explicit InputBinding(Input* input) : input(input) {}
-
-    void isKeyPressed(const std::string& key) {
-        input->isKeyPressed(key);
+    explicit InputBinding(const Input* input) : input(input) {
+        println("Created binding for mouse & keyboard input");
     }
 
-    static void createType(lua_State* L, Input* input) {
-        println("InputBinding create type");
+    ~InputBinding() {
+        println("Destroyed binding for mouse & keyboard input");
+    }
 
-        std::string typeName = "InputBinding";
-        std::string metatableName = typeName + "__metatable";
+    bool isKeyPressed(const std::string& key) const {
+        return input->isKeyPressed(key);
+    }
+
+    static void createType(lua_State* L, const std::string& typeName, const Input& input) {
+        std::string metatableName = getMetatableName(typeName);
 
         void* userdata = lua_newuserdata(L, sizeof(InputBinding));
-        new(userdata) InputBinding(input);
+        new(userdata) InputBinding(&input);
         int userdataIndex = lua_gettop(L);
 
-        lua_newtable(L);
-        lua_pushvalue(L, -1);
-        lua_setglobal(L, typeName.c_str());
-        lua_setuservalue(L, userdataIndex);
-
         luaL_newmetatable(L, metatableName.c_str());
+        {
+            lua_pushstring(L, "__gc");
+            lua_pushcfunction(L, InputBinding::destroy);
+            lua_settable(L, -3);
+        }
         {
             lua_pushstring(L, "__index");
             constexpr int upvalueCount = 0;
             lua_pushcclosure(L, InputBinding::index, upvalueCount);
             lua_settable(L, -3);
         }
-        lua_setmetatable(L, -2);
+        lua_setmetatable(L, userdataIndex);
+
+        lua_newtable(L);
+        lua_setuservalue(L, userdataIndex);
+
+        lua_pushvalue(L, -1);
+        lua_setglobal(L, typeName.c_str());
+    }
+
+    static int destroy(lua_State* L) {
+        auto* binding = (InputBinding*) lua_touserdata(L, -1);
+        binding->~InputBinding();
+        return 0;
     }
 
     static int index(lua_State* L) {
-        println("Foo index");
-
-        std::string key = lua_tostring(L, -1);
-        println("Foo index %s", key.c_str());
-
         constexpr int bottomOfLuaStackIndex = 1;
         int userdataIndex = bottomOfLuaStackIndex;
         auto* binding = (InputBinding*) lua_touserdata(L, userdataIndex);
 
-        binding->isKeyPressed(key);
+        int keyIndex = userdataIndex + 1;
+        std::string key = lua_tostring(L, keyIndex);
+
+        if (key == "isKeyPressed") {
+            auto function = [](lua_State* L) -> int {
+                std::string key = lua_tostring(L, -1);
+                auto* binding = (InputBinding*) lua_touserdata(L, lua_upvalueindex(1));
+                lua_pushboolean(L, binding->isKeyPressed(key));
+                return 1;
+            };
+            lua_pushlightuserdata(L, binding);
+            constexpr int upvalueCount = 1;
+            lua_pushcclosure(L, function, upvalueCount);
+            return 1;
+        }
+
         return 0;
     }
 };
-
-template<typename T, typename ...Arg>
-void initLuaBindings(lua_State* L, const std::string& typeName, const Arg&... args) {
-    std::string metatableName = typeName + "__metatable";
-
-    lua_newtable(L);
-    lua_pushvalue(L, -1);
-    lua_setglobal(L, typeName.c_str());
-    {
-        lua_pushstring(L, typeName.c_str());
-
-        // https://www.fluentcpp.com/2021/03/12/cpp-fold-expressions/
-        ([L, &args]() {
-            lua_pushlightuserdata(L, (void*) &args);
-        }(), ...);
-
-        constexpr int upvalueCount = 1 + sizeof...(Arg);
-        lua_pushcclosure(L, T::create, upvalueCount);
-        lua_setfield(L, -2, "new");
-    }
-
-    luaL_newmetatable(L, metatableName.c_str());
-    {
-        lua_pushstring(L, "__gc");
-        lua_pushcfunction(L, T::destroy);
-        lua_settable(L, -3);
-    }
-    {
-        lua_pushstring(L, "__index");
-        constexpr int upvalueCount = 0;
-        lua_pushcclosure(L, T::index, upvalueCount);
-        lua_settable(L, -3);
-    }
-    {
-        lua_pushstring(L, "__newindex");
-        constexpr int upvalueCount = 0;
-        lua_pushcclosure(L, T::newIndex, upvalueCount);
-        lua_settable(L, -3);
-    }
-}
 
 int main() {
     println("Hello World");
     println("===");
 
     /*
-     * Entities init
+     * Domain init
      */
 
     Entity player;
-    player.Id = "player";
-    player.ScriptComponent.Type = "Player";
+    player.id = "player";
+    player.scriptComponent.type = "Player";
 
     Entity camera;
-    camera.Id = "camera";
-    camera.ScriptComponent.Type = "Camera";
-
-    Entity enemy;
-    enemy.Id = "enemy";
-    enemy.ScriptComponent.Type = "Player";
+    camera.id = "camera";
+    camera.scriptComponent.type = "Camera";
 
     Scene scene{};
-    scene.Entities[player.Id] = player;
-    scene.Entities[camera.Id] = camera;
-    scene.Entities[enemy.Id] = enemy;
+    scene.entities[player.id] = player;
+    scene.entities[camera.id] = camera;
 
-    for (const auto& iterator : scene.Entities) {
+    for (const auto& iterator : scene.entities) {
         const Entity& entity = iterator.second;
-        scene.Types.insert(entity.ScriptComponent.Type);
+        scene.types.insert(entity.scriptComponent.type);
     }
+
+    Input input{};
 
     /*
      * Lua init
@@ -324,15 +353,10 @@ int main() {
     luaL_openlibs(L);
     println("Opened Lua standard libraries");
 
-    for (const std::string& typeName : scene.Types) {
-        initLuaBindings<EntityBinding>(L, typeName, scene);
+    for (const std::string& typeName : scene.types) {
+        EntityBinding::createType(L, typeName, scene);
     }
-    //initLuaBindings<InputBinding>(L, "InputBinding", scene);
-
-    auto* input = new Input();
-    InputBinding::createType(L, input);
-
-
+    InputBinding::createType(L, "Input", input);
     println("Registered Lua bindings");
 
     luaL_loadfile(L, "scripts");
@@ -361,13 +385,12 @@ int main() {
         luaL_error(L, lua_tostring(L, -1));
     }
 
-    for (const auto& iterator : scene.Entities) {
+    for (const auto& iterator : scene.entities) {
         const Entity& entity = iterator.second;
 
-        lua_getglobal(L, entity.ScriptComponent.Type.c_str());
-        println("hello? %s", entity.ScriptComponent.Type.c_str());
+        lua_getglobal(L, entity.scriptComponent.type.c_str());
         lua_getfield(L, -1, "new");
-        lua_pushstring(L, entity.Id.c_str());
+        lua_pushstring(L, entity.id.c_str());
         if (lua_pcall(L, 1, 1, 0) != LUA_OK) {
             luaL_error(L, lua_tostring(L, -1));
         }
@@ -379,28 +402,28 @@ int main() {
         }
     }
 
-    for (const auto& iterator : scene.Entities) {
+    for (const auto& iterator : scene.entities) {
         const Entity& entity = iterator.second;
 
         lua_getglobal(L, "onUpdateEntity");
-        lua_pushstring(L, entity.Id.c_str());
+        lua_pushstring(L, entity.id.c_str());
         if (lua_pcall(L, 1, 0, 0) != LUA_OK) {
             luaL_error(L, lua_tostring(L, -1));
         }
     }
 
     lua_getglobal(L, "onDestroyEntity");
-    lua_pushstring(L, scene.Entities["player"].Id.c_str());
+    lua_pushstring(L, scene.entities["player"].id.c_str());
     if (lua_pcall(L, 1, 0, 0) != LUA_OK) {
         luaL_error(L, lua_tostring(L, -1));
     }
-    scene.Entities.erase("player");
+    scene.entities.erase("player");
 
-    for (const auto& iterator : scene.Entities) {
+    for (const auto& iterator : scene.entities) {
         const Entity& entity = iterator.second;
 
         lua_getglobal(L, "onUpdateEntity");
-        lua_pushstring(L, entity.Id.c_str());
+        lua_pushstring(L, entity.id.c_str());
         if (lua_pcall(L, 1, 0, 0) != LUA_OK) {
             luaL_error(L, lua_tostring(L, -1));
         }

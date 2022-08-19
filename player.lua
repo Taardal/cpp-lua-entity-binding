@@ -3,8 +3,8 @@ function Player:onCreate()
     print("self.entityId .. " .. self.entityId)
     print("self.type .. " .. self.type)
     print("self.transform .. " .. self.transform.x .. ", " .. self.transform.y)
-    print("self.hasComponent('ScriptComponent') .. " .. tostring(self.hasComponent('ScriptComponent')))
-    print("self.hasComponent('TransformComponent') .. " .. tostring(self.hasComponent('TransformComponent')))
+    print("self.hasComponent('scriptComponent') .. " .. tostring(self.hasComponent('scriptComponent')))
+    print("self.hasComponent('transformComponent') .. " .. tostring(self.hasComponent('transformComponent')))
     print("self.hasComponent('FooComponent') .. " .. tostring(self.hasComponent('FooComponent')))
 end
 
