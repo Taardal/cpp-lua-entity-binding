@@ -8,11 +8,11 @@ end
 function Camera:onUpdate()
     print("Camera:onUpdate [" .. self.entityId .. "]")
 
-    if (Input.isKeyPressed("Esc")) then
+    if (Keyboard.isKeyPressed("Esc")) then
         print("OMG OMG ESC IS PRESSED")
     end
 
-    if (Input.isKeyPressed("Enter")) then
+    if (Keyboard.isKeyPressed("Enter")) then
         print("enter is not pressed sadface")
     end
 end
