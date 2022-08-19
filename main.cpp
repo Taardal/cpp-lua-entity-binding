@@ -188,73 +188,58 @@ struct EntityBinding {
 
 class Input {
 public:
-    static int create(lua_State* L) {
-        println("Input create");
-        return 0;
-    }
-
-    static int destroy(lua_State* L) {
-        println("Input destroy");
-        return 0;
-    }
-
-    static int index(lua_State* L) {
-        println("Input index");
-        return 0;
-    }
-
-    static int newIndex(lua_State* L) {
-        println("Input newIndex");
-        return 0;
-    }
-};
-
-class Bar {
-public:
-    static void isKeyPressed() {
-        println("TruE");
-    }
-
-    void isKeyPrezzed(const std::string& key) {
+    void isKeyPressed(const std::string& key) {
         println("KEY [%s] IS PRESSED", key.c_str());
     }
 };
 
-class Foo {
+class InputBinding {
+private:
+    Input* input;
+
 public:
-    static void createType(lua_State* L, Bar* bar) {
-        println("Foo create type");
-        std::string typeName = "Foo";
+    explicit InputBinding(Input* input) : input(input) {}
+
+    void isKeyPressed(const std::string& key) {
+        input->isKeyPressed(key);
+    }
+
+    static void createType(lua_State* L, Input* input) {
+        println("InputBinding create type");
+
+        std::string typeName = "InputBinding";
         std::string metatableName = typeName + "__metatable";
+
+        void* userdata = lua_newuserdata(L, sizeof(InputBinding));
+        new(userdata) InputBinding(input);
+        int userdataIndex = lua_gettop(L);
 
         lua_newtable(L);
         lua_pushvalue(L, -1);
         lua_setglobal(L, typeName.c_str());
+        lua_setuservalue(L, userdataIndex);
 
-        lua_pushlightuserdata(L, bar);
-        int upvalueCount = 1;
-        lua_pushcclosure(L, Foo::index, upvalueCount);
-        lua_setfield(L, -2, "isKeyPressed");
-
-        /*
         luaL_newmetatable(L, metatableName.c_str());
         {
             lua_pushstring(L, "__index");
             constexpr int upvalueCount = 0;
-            lua_pushcclosure(L, Foo::index, upvalueCount);
+            lua_pushcclosure(L, InputBinding::index, upvalueCount);
             lua_settable(L, -3);
         }
         lua_setmetatable(L, -2);
-        */
     }
 
     static int index(lua_State* L) {
         println("Foo index");
-        printLua(L);
+
         std::string key = lua_tostring(L, -1);
         println("Foo index %s", key.c_str());
-        auto* bar = (Bar*) lua_touserdata(L, lua_upvalueindex(1));
-        bar->isKeyPrezzed(key);
+
+        constexpr int bottomOfLuaStackIndex = 1;
+        int userdataIndex = bottomOfLuaStackIndex;
+        auto* binding = (InputBinding*) lua_touserdata(L, userdataIndex);
+
+        binding->isKeyPressed(key);
         return 0;
     }
 };
@@ -342,10 +327,10 @@ int main() {
     for (const std::string& typeName : scene.Types) {
         initLuaBindings<EntityBinding>(L, typeName, scene);
     }
-    initLuaBindings<Input>(L, "Input", scene);
+    //initLuaBindings<InputBinding>(L, "InputBinding", scene);
 
-    auto* bar = new Bar();
-    Foo::createType(L, bar);
+    auto* input = new Input();
+    InputBinding::createType(L, input);
 
 
     println("Registered Lua bindings");

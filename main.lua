@@ -23,4 +23,4 @@ function onDestroyEntity(entityId)
     entities[entityId] = nil
 end
 
-Foo.isKeyPressed("Esc")
+Input.isKeyPressed("Esc")
