@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.17)
 set(CMAKE_CXX_STANDARD 20)
 
-project(luapoc)
+project(cpp-lua-entity-binding)
 
 add_executable(
         ${PROJECT_NAME} 
@@ -13,7 +13,7 @@ add_executable(
 set(INSTALL_DIR ${PROJECT_SOURCE_DIR})
 set(BIN_DIR "${PROJECT_SOURCE_DIR}/bin")
 
-set(RUNTIME_NAME ${PROJECT_NAME})
+set(RUNTIME_NAME "app")
 set(RUNTIME_NAME_DEBUG "${RUNTIME_NAME}_debug")
 set(RUNTIME_NAME_RELEASE "${RUNTIME_NAME}_release")
 

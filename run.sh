@@ -16,4 +16,4 @@ cmake --install build
 luac src/*.lua
 
 # Run binary
-./luapoc
+./app
