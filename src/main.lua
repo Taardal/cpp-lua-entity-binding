@@ -1,3 +1,5 @@
+package.path = './src/?.lua;' .. package.path
+
 require("player")
 require("camera")
 require("debug")

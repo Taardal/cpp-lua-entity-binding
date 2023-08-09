@@ -375,7 +375,7 @@ int main() {
     KeyboardBinding::createType(L, "Keyboard");
     println("Registered Lua bindings");
 
-    luaL_loadfile(L, "scripts");
+    luaL_loadfile(L, "luac.out");
     {
         LuaFunction function{};
         function.argumentCount = 0;
