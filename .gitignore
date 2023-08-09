@@ -1,4 +1,16 @@
-.idea/
+# Build & Intermediates
+bin/
 build/
 cmake-build-debug/
-scripts
+
+# Output
+luapoc*
+luac.out
+
+# Editors & IDEs
+.idea/
+.vscode/
+
+# MacOS
+.DS_Store
+
