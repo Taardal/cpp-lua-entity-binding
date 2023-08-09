@@ -3,14 +3,17 @@
 # Exit when any command fails
 set -e
 
-# Compile lua files
-luac -o scripts *.lua
-
 # Generate build files
 cmake -S . -B build
 
 # Compile binary
 cmake --build build
 
+# Install binary
+cmake --install build
+
+# Compile lua files
+luac src/*.lua
+
 # Run binary
-./build/luapoc
+./luapoc
